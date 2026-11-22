@@ -1,5 +1,5 @@
 ---
-"@code-id-labs/store": minor
+"@code-id-labs/store": major
 ---
 
 Initial release of `@code-id-labs/store` — zero-overhead atomic state management for WeChat MiniPrograms powered by `alien-signals`.

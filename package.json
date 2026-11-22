@@ -11,6 +11,7 @@
     "clean": "pnpm -r clean",
     "changeset": "changeset",
     "version-packages": "changeset version",
+    "release": "pnpm --filter @code-id-labs/store build && pnpm --filter @code-id-labs/store test && changeset publish"
   },
   "devDependencies": {
     "@changesets/cli": "^2.29.4",
