@@ -56,7 +56,7 @@ describe('store.subscribe()', () => {
     assert.equal(events.length, 2);
   });
 
-  it('also supports TanStack-style `{ unsubscribe }` destructuring', () => {
+  it('also supports `{ unsubscribe }` destructuring', () => {
     const name = createStore('Alice');
     const seen: string[] = [];
 
