@@ -1,6 +1,10 @@
 {
   "name": "code-store-monorepo",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/code-id-miniapp-labs/code-store.git"
+  },
   "packageManager": "pnpm@12.21.0",
   "scripts": {
     "build": "pnpm -r build",
