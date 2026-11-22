@@ -1,0 +1,23 @@
+{
+  "name": "code-store-monorepo",
+  "private": true,
+  "packageManager": "pnpm@12.21.0",
+  "scripts": {
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "bench": "pnpm --filter code-store build && vitest bench --run --config benchmark/vitest.config.ts",
+    "compare:size": "pnpm --filter code-store build && node benchmark/compare-size.mjs",
+    "clean": "pnpm -r clean"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.25.0",
+    "miniprogram-api-typings": "^4.0.1",
+    "mobx-miniprogram": "^6.0.0",
+    "mobx-miniprogram-bindings": "^4.0.0",
+    "tsdown": "^0.15.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.2.0"
+  }
+}

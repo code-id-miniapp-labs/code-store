@@ -1,0 +1,44 @@
+<c-card title="Order Summary" description="Reactive derived totals from code-store">
+  <view class="flex flex-col gap-3 py-1">
+    <view class="flex items-center justify-between">
+      <text class="text-sm text-muted">Subtotal ({{cartCount}} items)</text>
+      <text class="text-sm text-default">{{formattedSubtotal}}</text>
+    </view>
+
+    <view class="flex items-center justify-between">
+      <view class="flex items-center gap-2">
+        <text class="text-sm text-muted">VIP Promo (15% off)</text>
+        <c-badge wx:if="{{isVip}}" label="Active" color="success" variant="soft" size="xs" />
+      </view>
+      <c-button
+        label="{{isVip ? 'Remove' : 'Apply'}}"
+        size="xs"
+        variant="outline"
+        bind:tap="handleToggleVip"
+      />
+    </view>
+
+    <view class="flex items-center justify-between">
+      <text class="text-sm text-muted">Discount</text>
+      <text class="text-sm text-success">{{formattedDiscount}}</text>
+    </view>
+
+    <view class="flex items-center justify-between">
+      <view class="flex flex-col">
+        <text class="text-sm text-muted">Delivery ({{shipping.city}})</text>
+        <text class="text-xs text-dimmed">{{shipping.express ? 'Express 20 min' : 'Standard 45 min'}}</text>
+      </view>
+      <c-button
+        label="{{shipping.express ? 'Express ¥12' : 'Standard Free'}}"
+        size="xs"
+        variant="soft"
+        bind:tap="handleToggleExpress"
+      />
+    </view>
+
+    <view class="flex items-center justify-between pt-3 border-t border-default">
+      <text class="text-base font-semibold text-highlighted">Total</text>
+      <text class="text-lg font-bold text-primary">{{formattedTotal}}</text>
+    </view>
+  </view>
+</c-card>

@@ -1,0 +1,5 @@
+node_modules
+dist
+.weapp-vite
+.DS_Store
+*.log

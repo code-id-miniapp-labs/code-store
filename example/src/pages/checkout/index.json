@@ -1,0 +1,7 @@
+{
+  "$schema": "https://vite.weapp.dev/page.json",
+  "navigationBarTitleText": "Checkout",
+  "usingComponents": {
+    "order-summary": "../../components/order-summary/index"
+  }
+}

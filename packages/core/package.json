@@ -1,0 +1,53 @@
+{
+  "name": "code-store",
+  "version": "0.1.0",
+  "description": "Zero-overhead Atomic Signal state management for WeChat Miniapps powered by alien-signals",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "keywords": [
+    "wechat",
+    "miniprogram",
+    "miniapp",
+    "signals",
+    "alien-signals",
+    "state-management",
+    "atomic-store"
+  ],
+  "scripts": {
+    "clean": "rm -rf dist",
+    "build": "tsdown",
+    "typecheck": "tsc --noEmit",
+    "test": "pnpm run build && node --test tests/*.test.ts",
+    "prepublishOnly": "pnpm run test && pnpm run typecheck"
+  },
+  "dependencies": {
+    "alien-signals": "^3.1.2"
+  },
+  "peerDependencies": {
+    "miniprogram-api-typings": ">=3.0.0"
+  },
+  "peerDependenciesMeta": {
+    "miniprogram-api-typings": {
+      "optional": true
+    }
+  }
+}

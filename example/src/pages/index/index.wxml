@@ -1,0 +1,55 @@
+<view class="min-h-screen bg-muted pb-24">
+  <shop-header />
+
+  <view class="p-4 flex flex-col gap-3">
+    <c-card
+      wx:if="{{lastOrderId}}"
+      title="Order {{lastOrderId}} placed!"
+      description="Cart was cleared via batch() on Checkout and synced here on onShow."
+    >
+      <view class="flex items-center justify-between pt-1">
+        <c-badge label="Completed" color="success" variant="soft" size="sm" />
+        <c-button label="Dismiss" size="xs" variant="ghost" bind:tap="handleDismissOrder" />
+      </view>
+    </c-card>
+
+    <view class="flex flex-col gap-3">
+      <c-card wx:for="{{products}}" wx:key="id">
+        <view class="flex items-center justify-between gap-3">
+          <view class="flex flex-col gap-1 flex-1">
+            <view class="flex items-center gap-2">
+              <text class="text-base font-semibold text-highlighted">{{item.name}}</text>
+              <c-badge label="{{item.tag}}" color="neutral" variant="soft" size="xs" />
+            </view>
+            <text class="text-xs text-muted">{{item.subtitle}}</text>
+            <text class="text-sm font-semibold text-primary mt-1">{{item.priceLabel}}</text>
+          </view>
+
+          <view class="flex items-center gap-2">
+            <c-button
+              wx:if="{{qtyMap[item.id] > 0}}"
+              label="-"
+              size="xs"
+              variant="outline"
+              data-id="{{item.id}}"
+              bind:tap="handleDecrement"
+            />
+            <text
+              wx:if="{{qtyMap[item.id] > 0}}"
+              class="min-w-6 text-center text-sm font-semibold text-default"
+            >{{qtyMap[item.id]}}</text>
+            <c-button
+              label="+"
+              size="xs"
+              color="primary"
+              data-id="{{item.id}}"
+              bind:tap="handleIncrement"
+            />
+          </view>
+        </view>
+      </c-card>
+    </view>
+  </view>
+
+  <cart-bar />
+</view>

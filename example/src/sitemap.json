@@ -1,0 +1,9 @@
+{
+  "desc": "WeChat MiniProgram Sitemap",
+  "rules": [
+    {
+      "action": "allow",
+      "page": "*"
+    }
+  ]
+}

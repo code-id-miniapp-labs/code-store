@@ -1,0 +1,44 @@
+{
+	"description": "WeChat MiniProgram project powered by weapp-vite & Code UI",
+	"miniprogramRoot": "dist/",
+	"srcMiniprogramRoot": "dist/",
+	"compileType": "miniprogram",
+	"setting": {
+		"coverView": false,
+		"postcss": false,
+		"minified": false,
+		"enhance": false,
+		"showShadowRootInWxmlPanel": false,
+		"packNpmRelationList": [],
+		"ignoreUploadUnusedFiles": true,
+		"compileHotReLoad": false,
+		"skylineRenderEnable": false,
+		"packNpmManually": false,
+		"es6": true,
+		"minifyWXML": true,
+		"newFeature": true,
+		"urlCheck": false,
+		"nodeModules": true,
+		"autoAudits": false,
+		"uploadWithSourceMap": true,
+		"uglifyFileName": true,
+		"remoteDebugLogEnable": true,
+		"prefetch": false
+	},
+	"simulatorType": "wechat",
+	"simulatorPluginLibVersion": {},
+	"editorSetting": {
+		"tabIndent": "insertSpaces",
+		"tabSize": 2
+	},
+	"libVersion": "3.13.2",
+	"packOptions": {
+		"ignore": [],
+		"include": []
+	},
+	"appid": "touristappid",
+	"projectname": "example",
+	"TCSASappid": "touristId",
+	"scripts": {},
+	"condition": {}
+}

@@ -1,0 +1,27 @@
+{
+  "name": "example",
+  "type": "module",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "wv dev",
+    "dev:open": "wv dev -o",
+    "build": "wv build",
+    "clean": "rm -rf dist",
+    "open": "wv open",
+    "postinstall": "wv prepare"
+  },
+  "dependencies": {
+    "@code-id-labs/components": "^1.0.8",
+    "@code-id-labs/composables": "^1.0.8",
+    "@code-id-labs/plugin-vite": "^1.0.8",
+    "code-store": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "miniprogram-api-typings": "^5.2.3",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^5.8.0",
+    "weapp-vite": "^7.5.0"
+  }
+}

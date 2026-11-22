@@ -1,0 +1,17 @@
+<view class="fixed bottom-0 left-0 right-0 px-4 py-3 bg-default border-t border-default flex items-center justify-between">
+  <view class="flex flex-col">
+    <view class="flex items-center gap-2">
+      <text class="text-lg font-bold text-highlighted">{{formattedTotal}}</text>
+      <c-badge wx:if="{{isVip}}" label="VIP -15%" color="success" variant="soft" size="xs" />
+    </view>
+    <text class="text-xs text-muted">{{cartCount}} item(s) selected</text>
+  </view>
+
+  <c-button
+    label="Checkout"
+    color="primary"
+    trailing-icon="i-lucide-arrow-right"
+    disabled="{{cartCount === 0}}"
+    bind:tap="handleGoCheckout"
+  />
+</view>
