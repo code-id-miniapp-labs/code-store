@@ -1,5 +1,5 @@
 {
-  "name": "code-store",
+  "name": "@code-id-labs/store",
   "version": "0.1.0",
   "description": "Zero-overhead Atomic Signal state management for WeChat Miniapps powered by alien-signals",
   "type": "module",
@@ -23,6 +23,9 @@
     "dist",
     "README.md"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "keywords": [
     "wechat",
     "miniprogram",

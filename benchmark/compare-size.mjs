@@ -34,7 +34,7 @@ async function measureBundle(label, code) {
       write: false,
       nodePaths: [join(ROOT, 'node_modules'), join(ROOT, 'packages/core/node_modules')],
       alias: {
-        'code-store': join(ROOT, 'packages/core/dist/index.mjs'),
+        '@code-id-labs/store': join(ROOT, 'packages/core/dist/index.mjs'),
       },
       define: {
         'process.env.NODE_ENV': '"production"',
@@ -169,12 +169,12 @@ async function measureSetDataPayloads() {
 const bundles = await Promise.all([
   measureBundle(
     'code-store (minimal: createStore + batch + bindStore)',
-    `import { createStore, batch, bindStore } from 'code-store';
+    `import { createStore, batch, bindStore } from '@code-id-labs/store';
      export { createStore, batch, bindStore };`
   ),
   measureBundle(
     'code-store (full: + persistentStore + storeBehavior + diffSnapshot)',
-    `import { createStore, createPersistentStore, batch, bindStore, storeBehavior, bindStoreBehavior, createStoreBehavior, diffSnapshot } from 'code-store';
+    `import { createStore, createPersistentStore, batch, bindStore, storeBehavior, bindStoreBehavior, createStoreBehavior, diffSnapshot } from '@code-id-labs/store';
      export { createStore, createPersistentStore, batch, bindStore, storeBehavior, bindStoreBehavior, createStoreBehavior, diffSnapshot };`
   ),
   measureBundle(
@@ -200,7 +200,7 @@ console.log('\n=== setData IPC Payload Size Comparison ===');
 console.table(
   payloads.map((p) => ({
     Scenario: p.scenario,
-    'code-store': `${p.codeStoreBytes} B (${p.codeStorePayload})`,
+    '@code-id-labs/store': `${p.codeStoreBytes} B (${p.codeStorePayload})`,
     'mobx-miniprogram': `${p.mobxBytes} B`,
     'Reduction': `${(((p.mobxBytes - p.codeStoreBytes) / p.mobxBytes) * 100).toFixed(1)}% smaller`,
   }))

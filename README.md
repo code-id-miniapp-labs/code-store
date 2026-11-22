@@ -17,7 +17,7 @@ import {
   createPersistentStore,
   batch,
   storeBehavior,
-} from 'code-store';
+} from '@code-id-labs/store';
 import { createPageOptions, createComponentOptions } from '@code-id-labs/miniapp';
 
 export const themeStore = createPersistentStore<'light' | 'dark'>('app:theme', 'light');

@@ -1,4 +1,4 @@
-import { createStore, createPersistentStore, batch } from 'code-store';
+import { createStore, createPersistentStore, batch } from '@code-id-labs/store';
 import { useColorMode } from '@code-id-labs/composables';
 
 export type ThemeMode = 'light' | 'dark';

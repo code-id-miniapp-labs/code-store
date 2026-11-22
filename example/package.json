@@ -7,6 +7,7 @@
     "dev": "wv dev",
     "dev:open": "wv dev -o",
     "build": "wv build",
+    "typecheck": "tsc -p .weapp-vite/tsconfig.app.json --noEmit",
     "clean": "rm -rf dist",
     "open": "wv open",
     "postinstall": "wv prepare"
@@ -15,7 +16,7 @@
     "@code-id-labs/components": "^1.0.8",
     "@code-id-labs/composables": "^1.0.8",
     "@code-id-labs/plugin-vite": "^1.0.8",
-    "code-store": "workspace:*"
+    "@code-id-labs/store": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

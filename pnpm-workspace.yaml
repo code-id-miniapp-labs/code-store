@@ -3,9 +3,5 @@ packages:
   - 'example'
 
 allowBuilds:
-  '@swc/core': set this to true or false
-  esbuild: set this to true or false
-
-onlyBuiltDependencies:
-  - '@swc/core'
-  - esbuild
+  '@swc/core': false
+  esbuild: false

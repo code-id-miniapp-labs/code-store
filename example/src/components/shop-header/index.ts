@@ -1,4 +1,4 @@
-import { storeBehavior } from 'code-store';
+import { storeBehavior } from '@code-id-labs/store';
 import {
   cartCountStore,
   themeModeStore,

@@ -9,7 +9,7 @@ import {
   createStore,
   createPersistentStore,
   storeBehavior,
-} from 'code-store';
+} from '@code-id-labs/store';
 
 export const themeStore = createPersistentStore<'light' | 'dark'>('app:theme', 'light');
 export const cartCountStore = createStore(0);
