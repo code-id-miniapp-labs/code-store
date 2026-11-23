@@ -1,5 +1,11 @@
 # @code-id-labs/store
 
+## 1.0.1
+
+### Patch Changes
+
+- a88f016: Remove per-component `pageLifetimes` from `storeBehavior` and `bindStoreBehavior` to prevent WeChat MiniProgram / TCMPP `onBeforeUnloadPage_<webviewId>` listener leak warnings when mounting 20+ store-connected components on a page. Component handles are now registered in a `WeakMap`-backed per-page registry and fanned out once per page via `onShow` / `onHide` / `onUnload`.
+
 ## 1.0.0
 
 ### Major Changes
