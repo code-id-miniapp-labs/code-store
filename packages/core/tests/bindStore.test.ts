@@ -1,4 +1,4 @@
-import { describe, it } from 'node:test';
+import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import {
@@ -18,20 +18,32 @@ interface MockBehaviorDef {
     attached(this: SetDataCapableInstance): void;
     detached(this: SetDataCapableInstance): void;
   };
-  pageLifetimes: {
-    show(this: SetDataCapableInstance): void;
-    hide(this: SetDataCapableInstance): void;
-  };
+  pageLifetimes?: Record<string, unknown>;
 }
 
-function createMockInstance(initialData: Record<string, unknown> = {}) {
+interface MockPageInstance extends SetDataCapableInstance {
+  data: Record<string, unknown>;
+  getPageId?: () => string;
+  __wxWebviewId__?: number;
+  onLoad?: (query?: Record<string, string | undefined>) => void;
+  onShow?: () => void;
+  onHide?: () => void;
+  onUnload?: () => void;
+  [key: string]: any;
+}
+
+function createMockInstance(
+  initialData: Record<string, unknown> = {},
+  extra: Record<string, unknown> = {}
+) {
   const payloads: Record<string, unknown>[] = [];
-  const instance: SetDataCapableInstance & { data: Record<string, unknown> } = {
+  const instance: MockPageInstance = {
     data: { ...initialData },
     setData(patch: Record<string, unknown>) {
       payloads.push({ ...patch });
       Object.assign(this.data, patch);
     },
+    ...extra,
   };
   return { instance, payloads };
 }
@@ -50,6 +62,15 @@ function setupMockBehaviorRegistry() {
 
   return registry;
 }
+
+function setupMockPageStack(pages: MockPageInstance[]) {
+  (globalThis as unknown as { getCurrentPages: unknown }).getCurrentPages = () =>
+    pages;
+}
+
+afterEach(() => {
+  delete (globalThis as unknown as { getCurrentPages?: unknown }).getCurrentPages;
+});
 
 describe('createStore (base + derived), isStore, bindStore & createStoreBehavior', () => {
   it('brands writable & derived stores with isStore() and distinguishes action functions', () => {
@@ -159,6 +180,18 @@ describe('createStore (base + derived), isStore, bindStore & createStoreBehavior
     handle.dispose();
   });
 
+  it('does NOT declare pageLifetimes on storeBehavior or bindStoreBehavior (prevents onBeforeUnloadPage leak warning)', () => {
+    const registry = setupMockBehaviorRegistry();
+    const count = createStore(0);
+
+    const storeBehaviorDef = registry.get(createStoreBehavior());
+    const bindBehaviorDef = registry.get(bindStoreBehavior({ count }));
+    assert.ok(storeBehaviorDef && bindBehaviorDef);
+
+    assert.equal('pageLifetimes' in storeBehaviorDef, false);
+    assert.equal('pageLifetimes' in bindBehaviorDef, false);
+  });
+
   it('exposes both reactive stores AND actions on `this.store` via definitionFilter on Page & Component', async () => {
     const registry = setupMockBehaviorRegistry();
     const storeBehaviorId = createStoreBehavior();
@@ -187,12 +220,12 @@ describe('createStore (base + derived), isStore, bindStore & createStoreBehavior
       ...pageMock.instance,
       store: pageDef.store,
       __codeStoreConfig__: pageDef.__codeStoreConfig__,
+      __codeStorePageHooked__: pageDef.__codeStorePageHooked__,
     };
 
     behaviorDef.lifetimes.attached.call(pageInstance as SetDataCapableInstance);
     pageDef.onLoad.call(pageInstance, {});
     assert.equal(seenThemeInOnLoad, 'light');
-    // Only reactive stores sent to setData — `increment` is never serialized
     assert.deepEqual(pageMock.payloads, [{ theme: 'light', count: 0 }]);
     pageMock.payloads.length = 0;
 
@@ -258,6 +291,255 @@ describe('createStore (base + derived), isStore, bindStore & createStoreBehavior
     behaviorDef.lifetimes.attached.call(skylinePage);
     assert.deepEqual(skylineMock.payloads, [{ theme: 'light' }]);
     behaviorDef.lifetimes.detached.call(skylinePage);
+  });
+
+  it('fans out onHide/onShow once per page to 25+ child components without double-patching', async () => {
+    const registry = setupMockBehaviorRegistry();
+    const count = createStore(0);
+    const theme = createStore<'light' | 'dark'>('light');
+
+    const storeBehaviorDef = registry.get(createStoreBehavior());
+    const bindBehaviorDef = registry.get(bindStoreBehavior({ theme }));
+    assert.ok(storeBehaviorDef && bindBehaviorDef);
+
+    // Plain host Page (does NOT use storeBehavior itself)
+    let pageShowCount = 0;
+    let pageHideCount = 0;
+    const { instance: hostPage } = createMockInstance(
+      {},
+      {
+        getPageId: () => 'page_1',
+        onShow() {
+          pageShowCount += 1;
+        },
+        onHide() {
+          pageHideCount += 1;
+        },
+      }
+    );
+    setupMockPageStack([hostPage]);
+
+    // Mount 25 child components (mix of storeBehavior & bindStoreBehavior)
+    const children: Array<{
+      instance: MockPageInstance;
+      payloads: Record<string, unknown>[];
+      kind: 'store' | 'bind';
+    }> = [];
+
+    for (let i = 0; i < 25; i++) {
+      if (i % 2 === 0) {
+        const compDef: Record<string, any> = {
+          properties: { idx: Number },
+          store: { count },
+        };
+        storeBehaviorDef.definitionFilter?.(compDef);
+        const child = createMockInstance(
+          {},
+          { getPageId: () => 'page_1', ...compDef.methods }
+        );
+        storeBehaviorDef.lifetimes.created?.call(child.instance);
+        storeBehaviorDef.lifetimes.attached.call(child.instance);
+        child.payloads.length = 0;
+        children.push({ ...child, kind: 'store' });
+      } else {
+        const child = createMockInstance({}, { getPageId: () => 'page_1' });
+        bindBehaviorDef.lifetimes.created?.call(child.instance);
+        bindBehaviorDef.lifetimes.attached.call(child.instance);
+        child.payloads.length = 0;
+        children.push({ ...child, kind: 'bind' });
+      }
+    }
+
+    // Verify hostPage.onShow / onHide were hooked ONLY once (not 25 wrapped layers)
+    const hookedOnShow = hostPage.onShow;
+    const hookedOnHide = hostPage.onHide;
+
+    // Hide page -> all 25 components pause (0 setData calls during background mutations)
+    hostPage.onHide?.();
+    assert.equal(pageHideCount, 1);
+
+    count.value = 1;
+    count.value = 2;
+    theme.value = 'dark';
+    await Promise.resolve();
+
+    for (const child of children) {
+      assert.equal(child.payloads.length, 0);
+    }
+
+    // Show page -> all 25 components resume & flush ONLY latest coalesced state
+    hostPage.onShow?.();
+    assert.equal(pageShowCount, 1);
+    assert.equal(hostPage.onShow, hookedOnShow);
+    assert.equal(hostPage.onHide, hookedOnHide);
+
+    for (const child of children) {
+      assert.equal(child.payloads.length, 1);
+      if (child.kind === 'store') {
+        assert.deepEqual(child.payloads[0], { count: 2 });
+      } else {
+        assert.deepEqual(child.payloads[0], { theme: 'dark' });
+      }
+    }
+
+    // Clean up all children
+    for (const child of children) {
+      if (child.kind === 'store') {
+        storeBehaviorDef.lifetimes.detached.call(child.instance);
+      } else {
+        bindBehaviorDef.lifetimes.detached.call(child.instance);
+      }
+    }
+  });
+
+  it('handles rapid child detach and mounting on an already-hidden page cleanly', async () => {
+    const registry = setupMockBehaviorRegistry();
+    const count = createStore(0);
+    const bindDef = registry.get(bindStoreBehavior({ count }));
+    assert.ok(bindDef);
+
+    const { instance: hostPage } = createMockInstance(
+      {},
+      { getPageId: () => 'page_rapid' }
+    );
+    setupMockPageStack([hostPage]);
+
+    // Mount 5 children, rapidly detach 3 before onHide
+    const children = Array.from({ length: 5 }, () => {
+      const c = createMockInstance({}, { getPageId: () => 'page_rapid' });
+      bindDef.lifetimes.attached.call(c.instance);
+      c.payloads.length = 0;
+      return c;
+    });
+
+    const hookedOnHide = hostPage.onHide;
+
+    bindDef.lifetimes.detached.call(children[0]!.instance);
+    bindDef.lifetimes.detached.call(children[1]!.instance);
+    bindDef.lifetimes.detached.call(children[2]!.instance);
+
+    // Hide page
+    hostPage.onHide?.();
+
+    // Detach child 3 while hidden
+    bindDef.lifetimes.detached.call(children[3]!.instance);
+
+    // Mount a brand-new child 5 while hostPage is ALREADY hidden -> must start paused
+    const lateChild = createMockInstance({}, { getPageId: () => 'page_rapid' });
+    bindDef.lifetimes.attached.call(lateChild.instance);
+    lateChild.payloads.length = 0;
+    // Must not re-patch hostPage
+    assert.equal(hostPage.onHide, hookedOnHide);
+
+    count.value = 42;
+    await Promise.resolve();
+
+    // All children (detached + paused survivor + late-mounted child) emit 0 setData
+    for (const c of children) assert.equal(c.payloads.length, 0);
+    assert.equal(lateChild.payloads.length, 0);
+
+    // Resume page -> only surviving child 4 and lateChild receive { count: 42 }
+    hostPage.onShow?.();
+    assert.equal(children[0]!.payloads.length, 0);
+    assert.equal(children[1]!.payloads.length, 0);
+    assert.equal(children[2]!.payloads.length, 0);
+    assert.equal(children[3]!.payloads.length, 0);
+    assert.deepEqual(children[4]!.payloads, [{ count: 42 }]);
+    assert.deepEqual(lateChild.payloads, [{ count: 42 }]);
+
+    // Page unload defensively disposes any remaining handles even if child detached() was skipped
+    hostPage.onUnload?.();
+    children[4]!.payloads.length = 0;
+    lateChild.payloads.length = 0;
+
+    count.value = 99;
+    await Promise.resolve();
+    assert.equal(children[4]!.payloads.length, 0);
+    assert.equal(lateChild.payloads.length, 0);
+  });
+
+  it('isolates multi-page stacks (Page A hidden while Page B active) using pageId & __wxWebviewId__', async () => {
+    const registry = setupMockBehaviorRegistry();
+    const count = createStore(0);
+    const storeBehaviorId = createStoreBehavior();
+    const storeDef = registry.get(storeBehaviorId);
+    const bindDef = registry.get(bindStoreBehavior({ count }));
+    assert.ok(storeDef && bindDef);
+
+    // Page A uses storeBehavior itself AND hosts a child component
+    const pageADef: Record<string, any> = {
+      behaviors: [storeBehaviorId],
+      store: { count },
+    };
+    storeDef.definitionFilter?.(pageADef);
+
+    const pageAMock = createMockInstance(
+      {},
+      {
+        getPageId: () => 'page_A',
+        __wxWebviewId__: 101,
+        store: pageADef.store,
+        __codeStoreConfig__: pageADef.__codeStoreConfig__,
+        __codeStorePageHooked__: pageADef.__codeStorePageHooked__,
+        onLoad: pageADef.onLoad,
+        onShow: pageADef.onShow,
+        onHide: pageADef.onHide,
+        onUnload: pageADef.onUnload,
+      }
+    );
+
+    const pageStack: MockPageInstance[] = [pageAMock.instance];
+    setupMockPageStack(pageStack);
+
+    // Mount Page A + Child A (matching via getPageId)
+    pageAMock.instance.onLoad?.({});
+    const childA = createMockInstance({}, { getPageId: () => 'page_A' });
+    bindDef.lifetimes.attached.call(childA.instance);
+    pageAMock.payloads.length = 0;
+    childA.payloads.length = 0;
+
+    // Navigate to Page B: Page A hides, Page B pushes onto stack
+    pageAMock.instance.onHide?.();
+
+    const pageBMock = createMockInstance(
+      {},
+      { __wxWebviewId__: 202 }
+    );
+    pageStack.push(pageBMock.instance);
+
+    // Mount Child B on Page B (matching via __wxWebviewId__)
+    const childB = createMockInstance({}, { __wxWebviewId__: 202 });
+    bindDef.lifetimes.attached.call(childB.instance);
+    childB.payloads.length = 0;
+
+    // Mutate count while Page B is active and Page A is hidden
+    count.value = 10;
+    count.value = 15;
+    await Promise.resolve();
+
+    // Only Child B receives setData; Page A & Child A remain paused
+    assert.deepEqual(childB.payloads, [{ count: 15 }]);
+    assert.equal(pageAMock.payloads.length, 0);
+    assert.equal(childA.payloads.length, 0);
+
+    // Navigate back from Page B -> Page B unloads & pops, Page A shows
+    pageBMock.instance.onUnload?.();
+    pageStack.pop();
+    pageAMock.instance.onShow?.();
+
+    // Page A & Child A resume and immediately flush latest value { count: 15 }
+    assert.deepEqual(pageAMock.payloads, [{ count: 15 }]);
+    assert.deepEqual(childA.payloads, [{ count: 15 }]);
+
+    // Child B was disposed on Page B unload
+    childB.payloads.length = 0;
+    count.value = 20;
+    await Promise.resolve();
+    assert.equal(childB.payloads.length, 0);
+    assert.deepEqual(pageAMock.payloads[1], { count: 20 });
+    assert.deepEqual(childA.payloads[1], { count: 20 });
+
+    pageAMock.instance.onUnload?.();
   });
 
   it('is a zero-overhead no-op in definitionFilter when `store` is omitted', () => {

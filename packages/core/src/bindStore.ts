@@ -1,5 +1,14 @@
 import { effect, effectScope } from 'alien-signals';
 import { diffSnapshot } from './diffSnapshot';
+import {
+  PAGE_HOOKED_KEY,
+  notifyPageHide,
+  notifyPageShow,
+  notifyPageUnload,
+  registerPageHandle,
+  unregisterPageHandle,
+  type PageLike,
+} from './pageRegistry';
 import { isStore } from './store';
 import type {
   BindStoreOptions,
@@ -15,6 +24,11 @@ const NOOP_HANDLE: StoreBindingHandle = {
   resume() {},
   dispose() {},
 };
+
+interface MountedBinding {
+  handle: StoreBindingHandle;
+  hostPage: PageLike | undefined;
+}
 
 /** Binds reactive stores in `bindings` to a WeChat Page/Component (actions are ignored by `setData`). */
 export function bindStore<B extends StoreBindings>(
@@ -188,7 +202,7 @@ export function bindStoreBehavior<B extends StoreBindings>(
   bindings: B,
   options?: BindStoreOptions
 ): TypedStoreBehavior<B> {
-  const handles = new WeakMap<SetDataCapableInstance, StoreBindingHandle>();
+  const mounted = new WeakMap<SetDataCapableInstance, MountedBinding>();
 
   return Behavior({
     lifetimes: {
@@ -197,26 +211,21 @@ export function bindStoreBehavior<B extends StoreBindings>(
           ? Object.assign({}, this.store, bindings)
           : bindings;
       },
-      attached(this: SetDataCapableInstance) {
+      attached(this: PageLike) {
         if (!this.store) {
           this.store = bindings;
         }
-        handles.set(this, bindStore(this, bindings, options));
+        const handle = bindStore(this, bindings, options);
+        const hostPage = registerPageHandle(this, handle);
+        mounted.set(this, { handle, hostPage });
       },
-      detached(this: SetDataCapableInstance) {
-        const handle = handles.get(this);
-        if (handle) {
-          handle.dispose();
-          handles.delete(this);
+      detached(this: PageLike) {
+        const entry = mounted.get(this);
+        if (entry) {
+          unregisterPageHandle(entry.hostPage, entry.handle);
+          entry.handle.dispose();
+          mounted.delete(this);
         }
-      },
-    },
-    pageLifetimes: {
-      show(this: SetDataCapableInstance) {
-        handles.get(this)?.resume();
-      },
-      hide(this: SetDataCapableInstance) {
-        handles.get(this)?.pause();
       },
     },
   }) as unknown as TypedStoreBehavior<B>;
@@ -229,7 +238,7 @@ interface StoreConfig {
   options: BindStoreOptions;
 }
 
-interface StoreAwareInstance extends SetDataCapableInstance {
+interface StoreAwareInstance extends PageLike {
   storeOptions?: BindStoreOptions;
   [STORE_CONFIG_KEY]?: () => StoreConfig;
 }
@@ -251,6 +260,7 @@ interface StoreDefinitionFields {
   onHide?: (this: StoreAwareInstance) => any;
   onUnload?: (this: StoreAwareInstance) => any;
   [STORE_CONFIG_KEY]?: () => StoreConfig;
+  [PAGE_HOOKED_KEY]?: boolean;
 }
 
 function isLikelyComponentDef(def: StoreDefinitionFields): boolean {
@@ -266,7 +276,7 @@ function isLikelyComponentDef(def: StoreDefinitionFields): boolean {
 
 /** Creates a declarative `definitionFilter` Behavior enabling `store: { ... }` + `this.store`. */
 export function createStoreBehavior(defaultOptions?: BindStoreOptions): string {
-  const handles = new WeakMap<SetDataCapableInstance, StoreBindingHandle>();
+  const mounted = new WeakMap<SetDataCapableInstance, MountedBinding>();
 
   function resolveConfig(instance: StoreAwareInstance): StoreConfig | undefined {
     const getter = instance[STORE_CONFIG_KEY];
@@ -294,21 +304,24 @@ export function createStoreBehavior(defaultOptions?: BindStoreOptions): string {
   }
 
   function mount(instance: StoreAwareInstance): void {
-    if (handles.has(instance)) {
+    if (mounted.has(instance)) {
       return;
     }
     const config = ensureStoreRef(instance);
     if (!config) {
       return;
     }
-    handles.set(instance, bindStore(instance, config.bindings, config.options));
+    const handle = bindStore(instance, config.bindings, config.options);
+    const hostPage = registerPageHandle(instance, handle);
+    mounted.set(instance, { handle, hostPage });
   }
 
   function unmount(instance: StoreAwareInstance): void {
-    const handle = handles.get(instance);
-    if (handle) {
-      handle.dispose();
-      handles.delete(instance);
+    const entry = mounted.get(instance);
+    if (entry) {
+      unregisterPageHandle(entry.hostPage, entry.handle);
+      entry.handle.dispose();
+      mounted.delete(instance);
     }
   }
 
@@ -333,6 +346,7 @@ export function createStoreBehavior(defaultOptions?: BindStoreOptions): string {
       }
 
       defFields[STORE_CONFIG_KEY] = getStoreConfig;
+      defFields[PAGE_HOOKED_KEY] = true;
       defFields.methods = defFields.methods || {};
       defFields.methods[STORE_CONFIG_KEY] = getStoreConfig;
 
@@ -352,14 +366,16 @@ export function createStoreBehavior(defaultOptions?: BindStoreOptions): string {
       };
 
       defFields.onShow = function (this: StoreAwareInstance) {
-        handles.get(this)?.resume();
+        notifyPageShow(this);
+        mounted.get(this)?.handle.resume();
         if (origOnShow) {
           return origOnShow.call(this);
         }
       };
 
       defFields.onHide = function (this: StoreAwareInstance) {
-        handles.get(this)?.pause();
+        notifyPageHide(this);
+        mounted.get(this)?.handle.pause();
         if (origOnHide) {
           return origOnHide.call(this);
         }
@@ -371,6 +387,7 @@ export function createStoreBehavior(defaultOptions?: BindStoreOptions): string {
             return origOnUnload.call(this);
           }
         } finally {
+          notifyPageUnload(this);
           unmount(this);
         }
       };
@@ -384,14 +401,6 @@ export function createStoreBehavior(defaultOptions?: BindStoreOptions): string {
       },
       detached(this: StoreAwareInstance) {
         unmount(this);
-      },
-    },
-    pageLifetimes: {
-      show(this: StoreAwareInstance) {
-        handles.get(this)?.resume();
-      },
-      hide(this: StoreAwareInstance) {
-        handles.get(this)?.pause();
       },
     },
   });
