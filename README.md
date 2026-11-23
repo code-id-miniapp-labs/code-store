@@ -332,7 +332,7 @@ diffSnapshot(
 
 Measured against `mobx-miniprogram@6.12.3` + `mobx-miniprogram-bindings@4.0.1` using Vitest Bench (`pnpm bench`) and esbuild production bundling (`pnpm compare:size`) on Node 24.
 
-### Speedup vs `mobx-miniprogram` (Higher is Better)
+### code-store vs `mobx-miniprogram` (Higher is Better)
 
 ```text
 Nested object setData  ████████████████████████████████████████  20.95x
@@ -345,7 +345,7 @@ Single-field setData   █████                                      2.52
 10-component fan-out   ████                                       2.04x
 ```
 
-| Scenario | `@code-id-labs/store` (ops/s) | `mobx-miniprogram` (ops/s) | Speedup |
+| Scenario | `@code-id-labs/store` (ops/s) | `mobx-miniprogram` (ops/s) | code-store |
 | :--- | ---: | ---: | ---: |
 | Cold-start creation (50 fields + 10 derived) | 321,250 | 28,614 | 11.44× |
 | Single primitive update → `setData` (20 bound fields) | 3,036,409 | 1,204,671 | 2.52× |
