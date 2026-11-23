@@ -143,19 +143,190 @@ unsubscribe();
 
 `subscribe` also supports `{ immediate: true }` and `const { unsubscribe } = store.subscribe(...)`.
 
-## API
+## API Reference
 
-| Export | Description |
-| :--- | :--- |
-| `createStore(initialValue)` | Writable store with `.value`, `.peek()`, `.reset()`, `.subscribe()`. |
-| `createStore((prev?) => value)` | Derived read-only store with `.value`, `.peek()`, `.subscribe()`. |
-| `createPersistentStore(key, defaultValue, opts?)` | Persistent store backed by WeChat storage (`debounceMs`, `onError`), plus `.clear()`. |
-| `batch(fn)` | Coalesces multiple mutations into a single update / `setData` flush. |
-| `storeBehavior` / `createStoreBehavior(opts?)` | `definitionFilter` Behavior enabling `store: { ... }` and `this.store` on `Page` & `Component`. |
-| `bindStoreBehavior(bindings, opts?)` | Explicit stackable Behavior with typed `this.store` and `this.data`. |
-| `bindStore(instance, bindings, opts?)` | Low-level binding returning `{ pause, resume, dispose }`. |
-| `diffSnapshot(prev, next, path, out)` | Diffs objects/arrays into WeChat dot/bracket `setData` paths. |
-| `isStore(value)` | Type guard distinguishing reactive stores from action functions. |
+### `createStore(initialValue)`
+
+Creates a writable store backed by `alien-signals`.
+
+```ts
+const count = createStore(0);
+```
+
+- `count.value` — read (tracked) or write (`Object.is` equal writes are ignored).
+- `count.peek()` — read without subscribing the active `effect` or derived store.
+- `count.reset()` — reset `.value` back to `initialValue`.
+- `count.subscribe(listener, options?)` — listen to changes (see [`subscribe`](#storesubscribelistener-options)).
+
+---
+
+### `createStore(getter)`
+
+Creates a lazy, cached read-only derived store. Recomputes only when dependencies read inside `getter` change.
+
+```ts
+const doubled = createStore(() => count.value * 2);
+
+// Optional `prev` receives the previous computed value
+const runningSum = createStore<number>((prev) => count.value + (prev ?? 0));
+```
+
+- `derived.value` — read (tracked).
+- `derived.peek()` — read without subscribing.
+- `derived.subscribe(listener, options?)` — listen to derived changes.
+
+---
+
+### `createPersistentStore(key, defaultValue, options?)`
+
+Creates a writable store persisted in WeChat local storage.
+
+```ts
+const draft = createPersistentStore('app:draft', '', {
+  debounceMs: 300,
+  onError: (err) => console.error(err),
+});
+```
+
+| Option | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `debounceMs` | `number` | `0` | Trailing debounce (ms) before persisting. When `0`, writes coalesce until `wx.nextTick` (falling back to microtask). |
+| `onError` | `(error: unknown) => void` | `undefined` | Called if storage read/write fails (e.g., 10 MB quota exceeded). |
+
+Behavior:
+- **Lazy hydration**: `wx.getStorageSync(key)` runs only on the first `.value` / `.peek()` read (skipped if written before read).
+- **Batched writes**: multiple dirty keys flush together via `wx.batchSetStorage` (Base Library ≥ 2.25.0), falling back to `wx.setStorage`.
+- **Automatic background flush**: lazily registers one `wx.onAppHide` listener (Base Library ≥ 2.1.2) on first write to flush pending queued/debounced writes via `wx.batchSetStorageSync`.
+- **Methods**: `.value`, `.peek()`, `.reset()` (persists `defaultValue`), `.clear()` (resets to `defaultValue` and calls `wx.removeStorage`), `.subscribe()`.
+
+---
+
+### `store.subscribe(listener, options?)`
+
+Subscribes to any writable, derived, or persistent store. Does not fire immediately by default. Reading other stores inside `listener` does not create extra subscriptions.
+
+```ts
+// Callable unsubscribe
+const unsubscribe = count.subscribe((value, prevValue) => {
+  console.log(prevValue, '->', value);
+});
+unsubscribe();
+
+// Destructured unsubscribe + immediate initial call (`prevValue` is `undefined` on first call)
+const { unsubscribe: stop } = count.subscribe(
+  (value, prevValue) => console.log(value, prevValue),
+  { immediate: true }
+);
+stop();
+```
+
+---
+
+### `batch(fn)`
+
+Groups multiple store updates so derived stores, subscribers, `setData`, and storage writes flush once after `fn` returns.
+
+```ts
+batch(() => {
+  cartCountStore.value = 0;
+  discountStore.value = 1.0;
+});
+```
+
+---
+
+### `storeBehavior` / `createStoreBehavior(options?)`
+
+Declarative `definitionFilter` Behavior for `Page()` and `Component()`.
+
+```ts
+// Ready-to-use singleton (diff: true)
+Page({
+  behaviors: [storeBehavior],
+  store: {
+    count: cartCountStore, // reactive store -> synced to this.data.count & this.store.count
+    increment,             // plain function -> available on this.store.increment (never sent to setData)
+  },
+  storeOptions: { diff: true }, // optional per-page/component override
+});
+
+// Or create a custom instance with default options
+const noDiffBehavior = createStoreBehavior({ diff: false });
+```
+
+- Injects `this.store` on both `Page` and `Component` (outside `this.data`).
+- Pages/components without a `store` field incur zero hooks and zero overhead.
+- Does **not** declare `pageLifetimes` on components — child handles register in a `WeakMap`-backed per-page registry and fan out `pause()` / `resume()` once per page on `onHide` / `onShow` (avoiding WeChat's `onBeforeUnloadPage` listener leak warning with 20+ components).
+
+---
+
+### `bindStoreBehavior(bindings, options?)`
+
+Creates an explicit, stackable Behavior with inferred `this.store` and `this.data` types for `Component()`.
+
+```ts
+const cartBehavior = bindStoreBehavior({
+  count: cartCountStore,
+  increment,
+});
+
+Component({
+  behaviors: [cartBehavior],
+  methods: {
+    onTap() {
+      this.store.increment();
+      console.log(this.data.count);
+    },
+  },
+});
+```
+
+Multiple `bindStoreBehavior`s can be stacked on the same component; their `this.store` entries are merged automatically.
+
+---
+
+### `bindStore(instance, bindings, options?)`
+
+Low-level imperative binding engine.
+
+```ts
+const handle = bindStore(this, { count: cartCountStore }, { diff: true });
+handle.pause();   // defer setData while hidden
+handle.resume();  // flush latest delta immediately
+handle.dispose(); // stop effectScope and release references
+```
+
+| Option | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `diff` | `boolean` | `true` | Diff non-primitive updates into WeChat dot/bracket paths via `diffSnapshot`. Primitives always bypass diffing in O(1). |
+
+---
+
+### `diffSnapshot(prev, next, path, out)`
+
+Standalone WeChat `setData` path differ. Writes minimal patches into `out` and returns `true` if anything changed.
+
+```ts
+const out: Record<string, unknown> = {};
+diffSnapshot(
+  { stats: { points: 100 } },
+  { stats: { points: 150 } },
+  'profile',
+  out
+);
+// out => { 'profile.stats.points': 150 }
+```
+
+- Emits dot-paths for nested objects and bracket-paths (`items[0].qty`) for arrays.
+- Falls back to replacing the parent path (with `undefined` stripped) when keys are deleted, arrays shrink, or keys contain `.`, `[`, or `]`.
+- Maps `undefined` transitions to `null` so WeChat WXML clears stale values.
+
+---
+
+### Utilities & Low-Level Re-Exports
+
+- `isStore(value)` — returns `true` for stores created by `createStore` or `createPersistentStore` (used to distinguish stores from action functions).
+- `effect`, `effectScope`, `startBatch`, `endBatch` — re-exported directly from `alien-signals`.
 
 ## Benchmarks
 
@@ -163,12 +334,15 @@ Measured against `mobx-miniprogram@6.12.3` + `mobx-miniprogram-bindings@4.0.1` u
 
 ### Speedup vs `mobx-miniprogram` (Higher is Better)
 
-```mermaid
-xychart-beta
-    title "Speedup Factor vs mobx-miniprogram (Vitest Bench)"
-    x-axis ["Cold Start", "1-Field setData", "5-Field Batch", "Nested Object", "Mount/Dispose", "10x Fan-Out", "Subscribe", "Sub/Unsub"]
-    y-axis "Speedup (x faster)" 0 --> 22
-    bar [11.44, 2.52, 3.70, 20.95, 4.61, 2.04, 6.22, 7.85]
+```text
+Nested object setData  ████████████████████████████████████████  20.95x
+Cold-start creation    ██████████████████████                    11.44x
+Subscribe / Unsub      ███████████████                            7.85x
+Subscribe + notify     ████████████                               6.22x
+Page mount / dispose   █████████                                  4.61x
+Batched 5-field        ███████                                    3.70x
+Single-field setData   █████                                      2.52x
+10-component fan-out   ████                                       2.04x
 ```
 
 | Scenario | `@code-id-labs/store` (ops/s) | `mobx-miniprogram` (ops/s) | Speedup |
@@ -184,12 +358,10 @@ xychart-beta
 
 ### Bundle Size (Minified + Bundled Dependencies)
 
-```mermaid
-xychart-beta
-    title "Production Bundle Size — Gzip (kB, Lower is Better)"
-    x-axis ["store (minimal)", "store (full)", "mobx-miniprogram + bindings"]
-    y-axis "Gzip Size (kB)" 0 --> 20
-    bar [3.09, 4.58, 18.18]
+```text
+@code-id-labs/store (min)   ███████                               3.09 kB gzip
+@code-id-labs/store (full)  ██████████                            4.58 kB gzip
+mobx-miniprogram + bindings ████████████████████████████████████ 18.18 kB gzip
 ```
 
 | Package | Minified | Gzip (lv9) | Brotli |
