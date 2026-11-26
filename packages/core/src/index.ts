@@ -1,6 +1,12 @@
 export { createStore, isStore, batch } from './store';
 export { createPersistentStore } from './persistentStore';
-export { effect, effectScope, startBatch, endBatch } from 'alien-signals';
+export {
+  effect,
+  effectScope,
+  startBatch,
+  endBatch,
+  setActiveSub,
+} from 'alien-signals';
 export { diffSnapshot } from './diffSnapshot';
 export {
   bindStore,

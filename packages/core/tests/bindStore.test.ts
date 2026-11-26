@@ -602,4 +602,46 @@ describe('createStore (base + derived), isStore, bindStore & createStoreBehavior
     assert.deepEqual(payloads, [{ count: 2, tripled: 6 }]);
     handle.dispose();
   });
+
+  it('handles >30 bound fields via Uint8Array dirty-flag fallback', async () => {
+    const atoms = Array.from({ length: 35 }, (_, i) => createStore(i));
+    const bindings: Record<string, any> = {};
+    for (let i = 0; i < 35; i++) {
+      bindings[`f${i}`] = atoms[i];
+    }
+
+    const { instance, payloads } = createMockInstance();
+    const handle = bindStore(instance, bindings);
+    assert.equal(payloads.length, 1);
+    assert.equal(Object.keys(payloads[0]!).length, 35);
+    payloads.length = 0;
+
+    batch(() => {
+      atoms[0]!.value = 100;
+      atoms[31]!.value = 3100;
+      atoms[34]!.value = 3400;
+    });
+    await Promise.resolve();
+
+    assert.equal(payloads.length, 1);
+    assert.deepEqual(payloads[0], { f0: 100, f31: 3100, f34: 3400 });
+    handle.dispose();
+  });
+
+  it('cleans up earlier subscriptions if a derived getter throws during bindStore mount', () => {
+    const a = createStore(1);
+    const broken = createStore(() => {
+      throw new Error('derived init error');
+    });
+    const { instance, payloads } = createMockInstance();
+
+    assert.throws(() => {
+      bindStore(instance, { a, broken });
+    }, /derived init error/);
+
+    assert.equal(payloads.length, 0);
+    // Subsequent updates to `a` must not invoke setData on the failed binding
+    a.value = 2;
+    assert.equal(payloads.length, 0);
+  });
 });

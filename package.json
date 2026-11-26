@@ -11,6 +11,7 @@
     "typecheck": "pnpm -r --if-present typecheck",
     "test": "pnpm -r --if-present test",
     "bench": "pnpm --filter @code-id-labs/store build && vitest bench --run --config benchmark/vitest.config.ts",
+    "bench:memory": "pnpm --filter @code-id-labs/store build && node --expose-gc benchmark/memory.mjs",
     "compare:size": "pnpm --filter @code-id-labs/store build && node benchmark/compare-size.mjs",
     "clean": "pnpm -r clean",
     "changeset": "changeset",

@@ -1,14 +1,13 @@
-import { signal as rawSignal } from 'alien-signals';
-import { subscribeStore } from './store';
+import { signal as rawSignal, getActiveSub } from 'alien-signals';
 import {
-  STORE_SYMBOL,
-  type ImmediateStoreListener,
-  type PersistentStore,
-  type PersistentStoreOptions,
-  type StoreListener,
-  type SubscribeOptions,
-  type Subscription,
-} from './types';
+  StoreBase,
+  addListener,
+  notifyWritableChange,
+  removeListener,
+  type AnyListener,
+  type WritableCore,
+} from './store';
+import type { PersistentStore, PersistentStoreOptions } from './types';
 
 const REMOVE_SENTINEL = Symbol('code-store:remove');
 
@@ -204,11 +203,15 @@ function schedulePersist(
 ): void {
   ensureAppHideListener();
 
-  const entry: PendingWrite = onError ? { value, onError } : { value };
-
   if (debounceMs > 0) {
     pendingQueue.delete(key);
-    debouncedQueue.set(key, entry);
+    const existingEntry = debouncedQueue.get(key);
+    if (existingEntry !== undefined) {
+      existingEntry.value = value;
+      existingEntry.onError = onError;
+    } else {
+      debouncedQueue.set(key, onError ? { value, onError } : { value });
+    }
 
     const existing = debounceTimers.get(key);
     if (existing !== undefined) {
@@ -235,21 +238,30 @@ function schedulePersist(
     debouncedQueue.delete(key);
   }
 
-  pendingQueue.set(key, entry);
+  const existingPending = pendingQueue.get(key);
+  if (existingPending !== undefined) {
+    existingPending.value = value;
+    existingPending.onError = onError;
+  } else {
+    pendingQueue.set(key, onError ? { value, onError } : { value });
+  }
+
   if (!flushScheduled) {
     flushScheduled = true;
     scheduleFlush(flushPendingQueue);
   }
 }
 
-class PersistentStoreImpl<T> implements PersistentStore<T> {
-  readonly [STORE_SYMBOL] = true as const;
+class PersistentStoreImpl<T>
+  extends StoreBase<T>
+  implements PersistentStore<T>, WritableCore<T>
+{
   private readonly _key: string;
   private readonly _defaultValue: T;
   private readonly _debounceMs: number;
   private readonly _onError: ((error: unknown) => void) | undefined;
-  private _raw: { (): T; (value: T): void } | undefined;
-  private _current: T;
+  _raw: { (): T; (value: T): void } | undefined = undefined;
+  _current: T;
   private _hydrated = false;
 
   constructor(
@@ -258,6 +270,7 @@ class PersistentStoreImpl<T> implements PersistentStore<T> {
     debounceMs: number,
     onError?: (error: unknown) => void
   ) {
+    super();
     this._key = key;
     this._defaultValue = defaultValue;
     this._debounceMs = debounceMs;
@@ -282,36 +295,39 @@ class PersistentStoreImpl<T> implements PersistentStore<T> {
   }
 
   private _ensureSignal(): { (): T; (value: T): void } {
-    if (!this._raw) {
-      this._raw = rawSignal<T>(this._current);
+    let raw = this._raw;
+    if (raw === undefined) {
+      raw = rawSignal<T>(this._current);
+      this._raw = raw;
     }
-    return this._raw;
+    return raw;
   }
 
   get value(): T {
     this._hydrate();
-    return this._ensureSignal()();
+    if (getActiveSub() !== undefined) {
+      return this._ensureSignal()();
+    }
+    return this._current;
   }
 
   set value(next: T) {
     if (!this._hydrated) {
       this._hydrated = true;
+      const prev = this._current;
       this._current = next;
-      if (this._raw) {
-        this._raw(next);
-      }
+      notifyWritableChange(this, next, prev);
       schedulePersist(this._key, next, this._debounceMs, this._onError);
       return;
     }
 
-    if (Object.is(this._current, next)) {
+    const prev = this._current;
+    if (Object.is(prev, next)) {
       return;
     }
 
     this._current = next;
-    if (this._raw) {
-      this._raw(next);
-    }
+    notifyWritableChange(this, next, prev);
     schedulePersist(this._key, next, this._debounceMs, this._onError);
   }
 
@@ -326,29 +342,21 @@ class PersistentStoreImpl<T> implements PersistentStore<T> {
 
   clear(): void {
     this._hydrated = true;
-    if (!Object.is(this._current, this._defaultValue)) {
+    const prev = this._current;
+    if (!Object.is(prev, this._defaultValue)) {
       this._current = this._defaultValue;
-      if (this._raw) {
-        this._raw(this._defaultValue);
-      }
+      notifyWritableChange(this, this._defaultValue, prev);
     }
     schedulePersist(this._key, REMOVE_SENTINEL, 0, this._onError);
   }
 
-  subscribe(listener: StoreListener<T>): Subscription;
-  subscribe(
-    listener: ImmediateStoreListener<T>,
-    options: { immediate: true }
-  ): Subscription;
-  subscribe(
-    listener: StoreListener<T>,
-    options?: { immediate?: false }
-  ): Subscription;
-  subscribe(
-    listener: StoreListener<T> | ImmediateStoreListener<T>,
-    options?: SubscribeOptions
-  ): Subscription {
-    return subscribeStore(() => this.value, listener, options);
+  _attach(listener: AnyListener<T>): AnyListener<T> {
+    this._hydrate();
+    return addListener(this, listener);
+  }
+
+  _detach(fn: AnyListener<T>): void {
+    removeListener(this, fn);
   }
 }
 

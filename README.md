@@ -326,48 +326,58 @@ diffSnapshot(
 ### Utilities & Low-Level Re-Exports
 
 - `isStore(value)` — returns `true` for stores created by `createStore` or `createPersistentStore` (used to distinguish stores from action functions).
-- `effect`, `effectScope`, `startBatch`, `endBatch` — re-exported directly from `alien-signals`.
+- `effect`, `effectScope`, `startBatch`, `endBatch`, `setActiveSub` — re-exported directly from `alien-signals`.
 
 ## Benchmarks
 
-Measured against `mobx-miniprogram@6.12.3` + `mobx-miniprogram-bindings@4.0.1` using Vitest Bench (`pnpm bench`) and esbuild production bundling (`pnpm compare:size`) on Node 24.
+Measured against `mobx-miniprogram@6.12.3` + `mobx-miniprogram-bindings@4.0.1` using Vitest Bench (`pnpm bench`), V8 `--expose-gc` heap profiling (`pnpm bench:memory`), and esbuild production bundling (`pnpm compare:size`) on Node 24.
 
 ### code-store vs `mobx-miniprogram` (Higher is Better)
 
 ```text
-Nested object setData  ████████████████████████████████████████  20.95x
-Cold-start creation    ██████████████████████                    11.44x
-Subscribe / Unsub      ███████████████                            7.85x
-Subscribe + notify     ████████████                               6.22x
-Page mount / dispose   █████████                                  4.61x
-Batched 5-field        ███████                                    3.70x
-Single-field setData   █████                                      2.52x
-10-component fan-out   ████                                       2.04x
+Subscribe / Unsub        ████████████████████████████████████████  22.80x
+Nested object setData    ████████████████████████████████████      20.79x
+Cold-start creation      █████████████████████                     12.23x
+Subscribe + notify       ███████████████                            8.72x
+Page mount / dispose     ████████████                               7.10x
+Batched 5-field          ███████                                    3.81x
+10-component fan-out     █████                                      2.69x
+Single-field setData     ████                                       2.38x
 ```
 
 | Scenario | `@code-id-labs/store` (ops/s) | `mobx-miniprogram` (ops/s) | code-store |
 | :--- | ---: | ---: | ---: |
-| Cold-start creation (50 fields + 10 derived) | 321,250 | 28,614 | 11.44× |
-| Single primitive update → `setData` (20 bound fields) | 3,036,409 | 1,204,671 | 2.52× |
-| Batched 5-field update + derived → `setData` | 1,015,839 | 292,566 | 3.70× |
-| Nested object leaf mutation → `setData` | 1,218,580 | 59,184 | 20.95× |
-| Page lifecycle churn (mount + dispose 10 fields) | 528,987 | 114,681 | 4.61× |
-| Multi-component fan-out (10 subscribers) | 296,119 | 145,334 | 2.04× |
-| Direct subscribe + notify (`subscribe` vs `reaction`) | 13,037,847 | 2,097,373 | 6.22× |
-| Subscribe + unsubscribe churn | 10,558,347 | 1,344,257 | 7.85× |
+| Cold-start creation (50 fields + 10 derived) | 333,932 | 27,315 | 12.23× |
+| Single primitive update → `setData` (20 bound fields) | 2,875,827 | 1,210,318 | 2.38× |
+| Batched 5-field update + derived → `setData` | 975,935 | 256,487 | 3.81× |
+| Nested object leaf mutation → `setData` | 1,215,282 | 58,460 | 20.79× |
+| Page lifecycle churn (mount + dispose 10 fields) | 790,194 | 111,372 | 7.10× |
+| Multi-component fan-out (10 subscribers) | 369,468 | 137,417 | 2.69× |
+| Direct subscribe + notify (`subscribe` vs `reaction`) | 18,242,733 | 2,092,064 | 8.72× |
+| Subscribe + unsubscribe churn | 24,046,467 | 1,054,518 | 22.80× |
+
+### Heap Memory Footprint (`pnpm bench:memory`)
+
+| Scenario | Retained Heap | Per Unit |
+| :--- | ---: | ---: |
+| 5,000 idle `createStore(i)` | 358.7 KB | ~73 B / store |
+| 5,000 stores × 1 subscribe each | 1,030.3 KB | ~211 B / subscription |
+| 1 store × 5,000 subscribers (fan-out) | 1,179.5 KB | ~242 B / subscriber |
+| 1 derived × 5,000 subscribers (fan-out) | 1,187.2 KB | ~243 B / subscriber |
+| 500 components × 5 bound stores (`bindStore`) | 753.9 KB | ~1.51 KB / component |
 
 ### Bundle Size (Minified + Bundled Dependencies)
 
 ```text
-@code-id-labs/store (min)   ███████                               3.09 kB gzip
-@code-id-labs/store (full)  ██████████                            4.58 kB gzip
-mobx-miniprogram + bindings ████████████████████████████████████ 18.18 kB gzip
+@code-id-labs/store (min)   ████████                               4.25 kB gzip
+@code-id-labs/store (full)  ████████████                           6.19 kB gzip
+mobx-miniprogram + bindings ████████████████████████████████████  18.18 kB gzip
 ```
 
 | Package | Minified | Gzip (lv9) | Brotli |
 | :--- | ---: | ---: | ---: |
-| `@code-id-labs/store` (minimal: `createStore` + `batch` + `bindStore`) | 8.30 kB | 3.09 kB | 2.86 kB |
-| `@code-id-labs/store` (full) | 13.15 kB | 4.58 kB | 4.22 kB |
+| `@code-id-labs/store` (minimal: `createStore` + `batch` + `bindStore`) | 12.13 kB | 4.25 kB | 3.89 kB |
+| `@code-id-labs/store` (full) | 18.54 kB | 6.19 kB | 5.69 kB |
 | `mobx-miniprogram` + `mobx-miniprogram-bindings` | 57.97 kB | 18.18 kB | 16.18 kB |
 
 ### `setData` Payload Size
@@ -385,5 +395,6 @@ pnpm build
 pnpm typecheck
 pnpm test
 pnpm bench
+pnpm bench:memory
 pnpm compare:size
 ```
